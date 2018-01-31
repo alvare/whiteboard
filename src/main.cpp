@@ -32,6 +32,9 @@ int main() {
 
     // create the window
     sf::ContextSettings settings;
+    settings.attributeFlags = sf::ContextSettings::Attribute::Core;
+    settings.minorVersion = 2;
+    settings.majorVersion = 3;
 
     sf::RenderWindow window(sf::VideoMode(800, 600), "My window", sf::Style::Default, settings);
     window.setVerticalSyncEnabled(true);
