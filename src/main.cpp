@@ -1,60 +1,81 @@
 #include <algorithm>
 #include <iostream>
 #include <memory>
+#include <cmath>
 #include <vector>
 #include <SFML/Graphics.hpp>
 
-std::string vertex_shader = R"glsl(
-#version 120;
-#extension GL_EXT_geometry_shader4 : enable
+int thickness = 10;
 
-int i;
-vec4 vertex;
-
-void main() {
-    // transform the vertex position
-    //gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
-    for(i = 0; i < gl_VerticesIn; i++) {
-      gl_Position = gl_ModelViewProjectionMatrix * gl_PositionIn[i];
-      EmitVertex();
-    }
-
-    // transform the texture coordinates
-    //gl_TexCoord[0] = gl_TextureMatrix[0] * gl_MultiTexCoord0;
-
-    // forward the vertex color
-    gl_FrontColor = gl_Color;
+inline float dot(const sf::Vector2f& v1, const sf::Vector2f& v2) {
+    return v1.x*v2.x + v1.y*v2.y;
 }
-)glsl";
+
+inline sf::Vector2f normalize(sf::Vector2f source) {
+    float length = std::hypot(source.x, source.y);
+    if (length != 0) source /= length;
+    return source;
+}
+
+void drawSegment(sf::RenderWindow& window,
+                 const sf::Vector2f& p0,
+                 const sf::Vector2f& p1,
+                 const sf::Vector2f& p2,
+                 const sf::Vector2f& p3) {
+    // skip if zero length
+    if(p1 == p2) return;
+
+    // 1) define the line between the two points
+    sf::Vector2f line = normalize(p2 - p1);
+
+    // 2) find the normal vector of this line
+    sf::Vector2f normal = normalize(sf::Vector2f(-line.y, line.x));
+
+    // 3) find the tangent vector at both the end points:
+    //      - if there are no segments before or after this one, use the line itself
+    //      - otherwise, add the two normalized lines and average them by normalizing again
+    sf::Vector2f tangent1 = (p0 == p1) ? line : normalize(normalize(p1-p0) + line);
+    sf::Vector2f tangent2 = (p2 == p3) ? line : normalize(normalize(p3-p2) + line);
+
+    // 4) find the miter line, which is the normal of the tangent
+    sf::Vector2f miter1 = sf::Vector2f(-tangent1.y, tangent1.x);
+    sf::Vector2f miter2 = sf::Vector2f(-tangent2.y, tangent2.x);
+
+    // 5) find length of miter by projecting the miter onto the normal,
+    //    take the length of the projection, invert it and multiply it by the thickness:
+    //    length = thickness * ( 1 / |normal|.|miter| )
+    float length1 = thickness / dot(normal, miter1);
+    float length2 = thickness / dot(normal, miter2);
+
+    std::vector<sf::Vertex> ps =
+        { sf::Vertex(p1 - length1 * miter1, sf::Color::Red),
+          sf::Vertex(p1 + length1 * miter1, sf::Color::Red),
+          sf::Vertex(p2 - length2 * miter2, sf::Color::Red),
+          sf::Vertex(p2 + length2 * miter2, sf::Color::Red) };
+
+    window.draw(ps.data(), 4, sf::TriangleStrip);
+}
+
+void drawSegments(sf::RenderWindow& window,
+                  const std::vector<sf::Vector2f>& points) {
+    size_t size = points.size();
+    for (int i = 0; i < size; ++i) {
+        int a = ((i-1) < 0) ? 0 : (i-1);
+        int b = i;
+        int c = ((i+1) >= size) ? size-1 : (i+1);
+        int d = ((i+2) >= size) ? size-1 : (i+2);
+
+        drawSegment(window, points[a], points[b], points[c], points[d]);
+    }
+}
 
 int main() {
-    using PointVec = std::vector<sf::Vertex>;
-
-    // create the window
-    sf::ContextSettings settings;
-    settings.attributeFlags = sf::ContextSettings::Attribute::Core;
-    settings.minorVersion = 2;
-    settings.majorVersion = 3;
-
-    sf::RenderWindow window(sf::VideoMode(800, 600), "My window", sf::Style::Default, settings);
+    sf::RenderWindow window(sf::VideoMode(1024, 768), "Maths");
     window.setVerticalSyncEnabled(true);
-    auto l = window.getSettings();
-    std::cout << l.majorVersion << ',' << l.minorVersion << std::endl;
-    //sf::View view = window.getView();
-    //view.zoom(2);
-    //window.setView(view);
-
-    if (!sf::Shader::isGeometryAvailable()) {
-        return 2;
-    }
-
-    sf::Shader shader;
-    if (!shader.loadFromMemory(vertex_shader, sf::Shader::Geometry)) {
-        return 1;
-    }
 
     // empty vec of points to draw
-    std::unique_ptr<PointVec> points = std::make_unique<PointVec>(1, sf::Vertex());
+    std::unique_ptr<std::vector<sf::Vector2f>> points =
+        std::make_unique<std::vector<sf::Vector2f>>(1, sf::Vector2f());
 
     // mouse position
     sf::Vector2i prev_pos;
@@ -72,9 +93,8 @@ int main() {
         if (sf::Mouse::isButtonPressed(sf::Mouse::Left)) {
             sf::Vector2i pos = sf::Mouse::getPosition(window);
             if (pos != prev_pos) {
-                points->push_back(sf::Vertex(sf::Vector2f(pos)));
+                points->push_back(sf::Vector2f(pos));
                 prev_pos = pos;
-                std::cout << points->size() << '\n';
             }
         }
 
@@ -82,7 +102,7 @@ int main() {
         window.clear(sf::Color::Black);
 
         // draw everything
-        window.draw(points->data(), points->size(), sf::LineStrip, &shader);
+        drawSegments(window, *points);
 
         // end the current frame
         window.display();
