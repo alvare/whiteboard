@@ -7,14 +7,50 @@
 
 int thickness = 10;
 
+template<typename T>
+inline sf::Vector2f product(const sf::Vector2f& v, T c) {
+    return sf::Vector2f(c*v.x, c*v.y);
+}
+
 inline float dot(const sf::Vector2f& v1, const sf::Vector2f& v2) {
     return v1.x*v2.x + v1.y*v2.y;
 }
 
-inline sf::Vector2f normalize(sf::Vector2f source) {
-    float length = std::hypot(source.x, source.y);
-    if (length != 0) source /= length;
-    return source;
+inline float length(const sf::Vector2f& v) {
+    return std::hypot(v.x, v.y);
+}
+
+inline sf::Vector2f normalize(sf::Vector2f v) {
+    float l = length(v);
+    if (l != 0) v /= l;
+    return v;
+}
+
+void drawCircles(sf::RenderWindow& window,
+                 const std::vector<sf::Vector2f>& points) {
+
+    int radius = thickness / 2;
+    size_t size = points.size();
+    auto c = sf::CircleShape(radius, 10);
+
+    for (int i = 0; i < size; ++i) {
+        int a = ((i-1) < 0) ? 0 : (i-1);
+        int b = i;
+
+        const sf::Vector2f& p1 = points[a];
+        const sf::Vector2f& p2 = points[b];
+        float distance = length(p2 - p1);
+
+        int steps = distance / radius;
+
+        for (int j = 0; j < steps; ++j) {
+            c.setPosition(p1 + product(p2 - p1, j/(float)steps));
+            window.draw(c);
+        }
+
+        c.setPosition(p2);
+        window.draw(c);
+    }
 }
 
 void drawSegment(sf::RenderWindow& window,
@@ -75,7 +111,7 @@ int main() {
 
     // empty vec of points to draw
     std::unique_ptr<std::vector<sf::Vector2f>> points =
-        std::make_unique<std::vector<sf::Vector2f>>(1, sf::Vector2f());
+        std::make_unique<std::vector<sf::Vector2f>>();
 
     // mouse position
     sf::Vector2i prev_pos;
@@ -102,7 +138,8 @@ int main() {
         window.clear(sf::Color::Black);
 
         // draw everything
-        drawSegments(window, *points);
+        //drawSegments(window, *points);
+        drawCircles(window, *points);
 
         // end the current frame
         window.display();
